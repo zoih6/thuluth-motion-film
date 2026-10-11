@@ -11,7 +11,7 @@ mkdirSync('out', { recursive: true });
 const browser = await chromium.launch({ args: ['--allow-file-access-from-files'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
 page.on('pageerror', e => console.log('ERR', e.message));
-await page.goto(pathToFileURL(resolve('index.html')).href);
+await page.goto(pathToFileURL(resolve(process.env.PAGE || 'index.html')).href);
 await page.waitForFunction(() => window.ready === true, null, { timeout: 120000 });
 const vf = SUB > 1 ? `tmix=frames=${SUB},select='eq(mod(n\\,${SUB})\\,${SUB - 1})',setpts=N/${FPS}/TB` : 'null';
 const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(FPS * SUB), '-i', '-',

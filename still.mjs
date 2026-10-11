@@ -5,7 +5,7 @@ const ts = process.argv.slice(2).map(Number);
 const b = await chromium.launch({ args: ['--allow-file-access-from-files'] });
 const p = await b.newPage({ viewport: { width: 1920, height: 1080 } });
 p.on('console', m => console.log('console:', m.text())); p.on('pageerror', e => console.log('ERR', e.message));
-await p.goto(pathToFileURL(resolve('index.html')).href);
+await p.goto(pathToFileURL(resolve(process.env.PAGE || 'index.html')).href);
 await p.waitForFunction(() => window.ready === true, null, { timeout: 60000 });
 for (const t of ts) { const t0 = Date.now(); await p.evaluate(t => window.seek(t), t);
   await p.locator('#c').screenshot({ path: `tmp/still_${t.toFixed(2)}.png` }); console.log('t', t, Date.now() - t0, 'ms'); }
