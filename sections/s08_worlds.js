@@ -18,6 +18,7 @@
   const CUTS = [0, 560, 860, 1125, inkW || 1243];
   S.init = async () => {
     CUTS[4] = inkW;
+    P.inkf = mk(inkW, inkH); { const x = P.inkf.getContext('2d'); x.drawImage(A.ink, 0, 0); x.drawImage(A.dot, 0, 0); }
     P.cards = NAMES.map((nm, n) => piece({ w: CW, h: CH, tex: 'cream', seed: 800 + n, rough: 6, tint: 'rgba(246,238,218,.68)' }));
     P.names = NAMES.map((nm, n) => makeTape(nm, 820 + n, nm.length * 30 + 70, n % 2 ? 'dark' : 'red', CREAM, 44, 76));
     P.nine = cutText('٩', 300);
@@ -32,7 +33,7 @@
   function slices(offs, y = 10, alpha = 1, dys = null) {
     const k = IW / inkW, h = inkH * k;
     for (let i = 0; i < 4; i++) { const sx = CUTS[i], sw = CUTS[i + 1] - CUTS[i];
-      g.save(); g.globalAlpha *= alpha; g.drawImage(A.ink, sx, 0, sw, inkH, -IW / 2 + sx * k + offs[i], y - h / 2 + (dys ? dys[i] : 0), sw * k, h); g.restore(); }
+      g.save(); g.globalAlpha *= alpha; g.drawImage(P.inkf, sx, 0, sw, inkH, -IW / 2 + sx * k + offs[i], y - h / 2 + (dys ? dys[i] : 0), sw * k, h); g.restore(); }
   }
   // the nine worlds, local time lt (s since camera arrival; <0 = preview state)
   const W = [
@@ -56,13 +57,14 @@
     (lt, t) => { // 4 الجلي: very broad pens → monumental band on a dome
       const pts = []; for (let i = 0; i <= 60; i++) { const u = i / 60; pts.push([lerp(250, -250, u), -20 + Math.sin(u * 3.1) * 50]); }
       const up = smooth(4.6, 5.6, lt);
+      { const gk = smooth(0, 2.6, lt), go = smooth(2.6, 3.1, lt); if (go < 1) { const w = lerp(300, 760, gk); g.save(); g.globalAlpha = 1 - go; g.drawImage(P.inkf, -w / 2 + 40 * gk, -w * inkH / inkW / 2 + 10, w, w * inkH / inkW); g.restore(); } }
       g.save(); g.translate(0, -up * 330); penRibbon(pts, 92, -.75, smooth(3.0, 4.4, lt)); g.restore();
       tag('أقلام عريضة', t, NAME[3] + 2.5, -170, -150, -.05, 'dark', 26, ZOOM[3] + 4.8);
       const dk = smooth(4.8, 6.0, lt); if (dk > 0) { g.save(); g.translate(0, lerp(420, 0, dk));
         g.fillStyle = '#16130f'; g.beginPath(); g.arc(0, 30, 150, Math.PI, 0); g.rect(-190, 30, 380, 170); g.fill();
         g.fillRect(-5, -150, 10, 40); nuqta(g, 0, -160, 22, '#c9a24a', 0);
         g.fillStyle = '#efe5cf'; g.fillRect(-170, 60, 340, 86); const ik = smooth(6.0, 7.6, lt);
-        if (ik > 0) { const w = 300, h = w * inkH / inkW; g.drawImage(inkFrame(ik), -w / 2, 103 - h / 2, w, h); }
+        if (ik > 0) { const w = 300, h = w * inkH / inkW; g.drawImage(inkFrame(ik), -w / 2, 103 - h / 2, w, h); if (ik > .97) g.drawImage(A.dot, -w / 2, 103 - h / 2, w, h); }
         g.restore(); }
       tag('جدران المساجد', t, ZOOM[3] + 6.6, 170, -150, .04, 'cream', 26);
     },
@@ -95,15 +97,15 @@
     },
     (lt, t) => { // 8 المتناظر: mirror axis, the reflection unfolds
       const k = smooth(.3, 1.8, lt), w = 260, h = w * inkH / inkW;
-      g.drawImage(A.ink, 6, -h / 2, w, h);
-      g.save(); g.beginPath(); g.rect(-6 - w * k, -200, w * k, 400); g.clip(); g.scale(-1, 1); g.drawImage(A.ink, 6, -h / 2, w, h); g.restore();
+      g.drawImage(P.inkf, 6, -h / 2, w, h);
+      g.save(); g.beginPath(); g.rect(-6 - w * k, -200, w * k, 400); g.clip(); g.scale(-1, 1); g.drawImage(P.inkf, 6, -h / 2, w, h); g.restore();
       g.save(); g.strokeStyle = RED; g.lineWidth = 3; g.setLineDash([8, 7]); g.beginPath(); g.moveTo(0, -170); g.lineTo(0, 170); g.stroke(); g.restore();
       tag('انعكاس مرآوي', t, NAME[7] + 2.2, 0, 160, .03, 'cream', 26);
     },
     (lt, t) => { // 9 المسلسل: an endless chain — each word's end links to the next one's start
       const w = 240, h = w * inkH / inkW, gap = 70, per = w + gap, sc = (Math.max(0, lt) * 90) % per;
       g.save(); g.beginPath(); g.rect(-CW / 2 + 10, -CH / 2 + 10, CW - 20, CH - 20); g.clip();
-      for (let i = -3; i <= 3; i++) { const x = i * per + sc; g.drawImage(A.ink, x - w / 2, -h / 2, w, h);
+      for (let i = -3; i <= 3; i++) { const x = i * per + sc; g.drawImage(P.inkf, x - w / 2, -h / 2, w, h);
         g.save(); g.strokeStyle = RED; g.lineWidth = 6; g.beginPath(); g.ellipse(x - w / 2 - gap / 2, h * .32, gap * .55, 16, 0, 0, 6.283); g.stroke(); g.restore(); }
       g.restore();
       tag('سلسلة لا تنقطع', t, ZOOM[8] + 7.2, 0, 160, -.03, 'cream', 26);
@@ -120,7 +122,7 @@
     // cards deal from the s07 fan (centre) to the grid
     for (let n = 8; n >= 0; n--) {
       const k = spring(t - (TT.deal + n * .07), 120, 16), [gx, gy] = pos(n);
-      const x = lerp(960, gx, k), y = lerp(520, gy, k), sc = lerp(1320 * .92 / CW, 1, k), rot = lerp((n - 4) * .11, 0, k);
+      const x = lerp(960, gx, k), y = lerp(520, gy, k), sc = lerp(1320 * .92 / CW, 1, k), rot = lerp(n === 0 ? 0 : (n - 4.5) * .11, 0, k);
       const b = boil(850 + n, t, .5);
       g.save(); g.translate(x + b[0], y + b[1]); g.rotate(rot + b[2]); g.scale(sc, sc);
       drawPiece(P.cards[n], 0, 0, 0, 1, 0, 1);
