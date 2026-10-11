@@ -22,9 +22,11 @@ After rendering: upload `segments/segNN.mp4` to release `segments` (id 409680796
 | seg03 | 979–1459 | 0:32.63–0:48.63 | s03 Umayyad timeline, Tumar, reed cut in thirds |
 | seg04 | 1459–2020 | 0:48.63–1:07.33 | s04 Ibn Muqla / Ibn al-Bawwab geometry + foundations |
 | seg05 | 2020–2453 | 1:07.33–1:21.77 | s05 summit, crown, Ottoman skyline, banners |
-| — | 2453–4000 | 1:21.8–2:13.3 | batch 4: why hardest / error cracks / harakat pen ¼ / void-fill (الحمل) |
-| — | 4000–5667 | 2:13.3–3:08.9 | batch 5: nine worlds |
-| — | 5667–7080 | 3:08.9–3:56 | batch 6: today → laser/vector/AI → ending |
+| seg06 | 2453–4006 | 1:21.77–2:13.53 | s06 hardest (error, loupe, cracks, stems) + s07 harakat pen ¼ / void-fill / الحمل |
+| seg07 | 4006–5668 | 2:13.53–3:08.93 | s08 nine worlds grid |
+| seg08 | 5668–7080 | 3:08.93–3:56.0 | s09 cage → reed → scan → vector → mosque → tablet/AI → laser → crown/throne |
+
+## ✅ DONE — release `v1.0`: final_1080p.mp4 (95MB), final_720p.mp4 (42MB), poster.jpg
 
 Final: concat all segments video by stream copy + one global audio mix (VO + full cues.json) → release `v1.0` `final.mp4`.
 `sample_v1_0000-0020.mp4` (the first approved sample) is also in the `segments` release.
