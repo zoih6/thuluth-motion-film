@@ -6,9 +6,9 @@ const EXT = {};
 // camera: draws bg with parallax, applies world transform. Caller must g.restore().
 function camBegin(t, s = 1, cx = 960, cy = 540, crot = 0, sh = 0) {
   g.setTransform(1, 0, 0, 1, 0, 0);
-  const d = camDrift(t); cx += d[0]; cy += d[1];
+  const d = camDrift(t); cx += d[0]; cy += d[1]; if (window.CAMOFF) { cx += CAMOFF[0]; cy += CAMOFF[1]; }
   CAM = { cx, cy, s, crot, sh };
-  g.drawImage(bg, -100 - (cx - 960) * .02, -100 - (cy - 540) * .02);
+  if (!window.NOBG) g.drawImage(bg, -100 - (cx - 960) * .02, -100 - (cy - 540) * .02);
   g.save(); g.translate(W / 2 + sh, H / 2 + sh * .6); g.scale(s, s); g.rotate(crot); g.translate(-cx, -cy);
 }
 function finishFrame(t) {
