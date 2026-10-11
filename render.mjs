@@ -6,7 +6,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
-const FPS = +arg('fps', 30), FROM = +arg('from', 0), TO = +arg('to', 20.8), SUB = +arg('sub', 2), OUT = arg('out', 'out/silent.mp4');
+const CRF = arg('crf', '18'), FPS = +arg('fps', 30), FROM = +arg('from', 0), TO = +arg('to', 20.8), SUB = +arg('sub', 2), OUT = arg('out', 'out/silent.mp4');
 mkdirSync('out', { recursive: true });
 const browser = await chromium.launch({ args: ['--allow-file-access-from-files'] });
 const page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: 1 });
@@ -15,7 +15,7 @@ await page.goto(pathToFileURL(resolve('index.html')).href);
 await page.waitForFunction(() => window.ready === true, null, { timeout: 120000 });
 const vf = SUB > 1 ? `tmix=frames=${SUB},select='eq(mod(n\\,${SUB})\\,${SUB - 1})',setpts=N/${FPS}/TB` : 'null';
 const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'image2pipe', '-c:v', 'mjpeg', '-framerate', String(FPS * SUB), '-i', '-',
-  '-vf', vf, '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', '16', '-pix_fmt', 'yuv420p', OUT], { stdio: ['pipe', 'inherit', 'inherit'] });
+  '-vf', vf, '-r', String(FPS), '-c:v', 'libx264', '-preset', 'medium', '-crf', CRF, '-pix_fmt', 'yuv420p', OUT], { stdio: ['pipe', 'inherit', 'inherit'] });
 const total = Math.round((TO - FROM) * FPS * SUB), t0 = Date.now();
 for (let i = 0; i < total; i++) {
   // centre each subframe inside its output frame for symmetric motion blur

@@ -20,7 +20,7 @@ canvas{display:block;width:100vw;max-width:1920px}
 //  خط الثلث — Motion documentary · Sample 00:00–00:20
 //  Pure function of time: window.seek(t) paints frame t. No timers, no Math.random.
 // ════════════════════════════════════════════════════════════════════
-const W = 1920, H = 1080, DUR = 20.8;
+const W = 1920, H = 1080, DUR = 236.0;
 const cv = document.getElementById('c'), g = cv.getContext('2d');
 
 // ── motion helpers (from motion-reel/scripts/motion.js) ──────────────
@@ -145,7 +145,7 @@ async function init() {
     loadImg('bg_dark', 'assets/bg_dark.jpg'), loadImg('paper_cream', 'assets/paper_cream.jpg'),
     loadImg('paper_red', 'assets/paper_red.jpg'), loadImg('paper_gold', 'assets/paper_gold.jpg'),
     loadImg('crown', 'assets/crown.png'), loadImg('qalam', 'assets/qalam.png'),
-    loadImg('ink', 'assets/thuluth_ink.png'), loadImg('ink3', 'assets/thuluth_ink3x.png'), loadImg('order', 'assets/thuluth_order.png'), loadImg('dot', 'assets/thuluth_dot.png')]);
+    loadImg('ink', 'assets/thuluth_ink.png'), loadImg('ink3', 'assets/thuluth_ink3x.png'), loadImg('order', 'assets/thuluth_order.png'), loadImg('dot', 'assets/thuluth_dot.png'), loadImg('scribe', 'assets/scribe.png'), loadImg('knife', 'assets/knife.png')]);
   for (const f of FONTS) { try { await document.fonts.load(`60px "${f}"`, 'خط حرف'); } catch (e) {} }
   await document.fonts.load('800 60px Kufi', 'خط'); await document.fonts.load('900 60px Kufi', 'خط');
   await document.fonts.ready;
@@ -212,6 +212,7 @@ async function init() {
   const sil = (img, blur) => { const c = mk(img.width + blur * 6, img.height + blur * 6), x = c.getContext('2d');
     x.filter = `blur(${blur}px) brightness(0)`; x.drawImage(img, blur * 3, blur * 3); return c; };
   A.crownSh = sil(A.crown, 12); A.qalamSh = sil(A.qalam, 10);
+  for (const sec of SECTIONS) if (sec.init) await sec.init();
   document.title = 'done';
   window.ready = true;
 }
@@ -232,7 +233,7 @@ function inkFrame(p) {
 // ── timeline constants (from the voice-over word timings) ─────────────
 const T = { stamp: 0.08, pull: 0.42, tapeWorld: 1.25, tapeHundreds: 4.95, dim: 6.45, crownIn: 7.3,
   push: 9.0, land: 11.58, cut: 11.8, fall: 12.12, flip: 12.96, write0: 13.2, write1: 14.85, crownTop: 14.9,
-  shift: 15.1, qalam: 18.35, touch: 18.95, dots: 19.45 };
+  shift: 15.1, qalam: 18.35, touch: 18.95, dots: 19.45, exit: 20.2 };
 
 // crown position (world) as a function of time
 function crownPos(t) {
@@ -248,7 +249,7 @@ let CAM = null;
 function toScreen(x, y) { const dx = x - CAM.cx, dy = y - CAM.cy, c = Math.cos(CAM.crot), n = Math.sin(CAM.crot);
   return [W / 2 + CAM.sh + (dx * c - dy * n) * CAM.s, H / 2 + CAM.sh * .6 + (dx * n + dy * c) * CAM.s]; }
 // ── draw ─────────────────────────────────────────────────────────────
-function draw(t) {
+function drawS01(t) {
   g.setTransform(1, 0, 0, 1, 0, 0);
   // camera
   const logS = track(t, [[0, Math.log(19)], [T.pull, Math.log(1.18)]], 26, 10.4)
@@ -256,7 +257,7 @@ function draw(t) {
     + track(t, [[0, 0], [T.dim, Math.log(0.6 / 0.56)]], 20, 9)
     + track(t, [[0, 0], [T.push, Math.log(1.0 / 0.6)]], 30, 11)
     + track(t, [[0, 0], [11.0, Math.log(1.12)], [12.15, Math.log(1.9)], [T.flip + .12, 0]], 40, 13)
-    + Math.log(1 + .05 * smooth(T.shift, DUR, t));
+    + Math.log(1 + .05 * (smooth(T.shift, T.exit, t) - smooth(T.exit, T.exit + 1.2, t)));
   let s = Math.exp(logS);
   // focus point: hero's thuluth dot first, then grid centre
   const dotWX = hero.x + (-CW / 2 + CW * .07 + (396 / inkW) * CW * .86), dotWY = hero.y + (-CH / 2 + (CH - CW * .86 * inkH / inkW) / 2 + 4 + (301 / inkH) * CW * .86 * inkH / inkW);
@@ -264,7 +265,7 @@ function draw(t) {
   let cx = lerp(dotWX, CENTER[0], fk), cy = lerp(dotWY, CENTER[1], fk);
   let crot = track(t, [[0, -0.05], [T.pull, 0.0], [2.5, -0.018], [T.push, 0]], 20, 9);
   // gentle drift
-  cx += Math.sin(t * .37) * 6; cy += Math.cos(t * .29) * 5;
+  cx += camDrift(t)[0]; cy += camDrift(t)[1];
   const sh = shake(t, T.stamp, 14) + shake(t, T.land, 7) + shake(t, 16.95, 10) + shake(t, T.crownTop, 5);
   CAM = { cx, cy, s, crot, sh };
   // background (slight parallax)
@@ -296,7 +297,7 @@ function draw(t) {
 
   // ── hero card → flips → big sheet
   const flipK = smooth(T.flip, T.flip + .42, t);
-  const grpShift = spring(t - T.shift, 110, 21);
+  const grpShift = spring(t - T.shift, 110, 21) - spring(t - T.exit, 110, 21);
   const GX = 960 + 300 * grpShift, GY = 548, GS = 1 - .2 * grpShift;
   if (flipK < .5) {
     const b = boil(hero.id, t, .6);
@@ -379,13 +380,14 @@ function draw(t) {
   for (const st of strips) {
     const k = st.stamp ? spring(t - st.t, 300, 22) : spring(t - st.t, 240, 20);
     if (k <= 0) continue; const b = boil(st.t * 100, t);
+    const ex = 1000 * spring(t - (T.exit + strips.indexOf(st) * .07), 200, 24); b[0] -= ex; if (ex > 990) continue;
     if (st.stamp) drawPiece(st.p, st.x + b[0], st.y + b[1], st.rot + (1 - k) * .1, lerp(1.7, 1, k), (1 - k) * 1.2, clamp(k * 4));
     else drawPiece(st.p, st.x - (1 - k) * 760 + b[0], st.y + b[1], st.rot - (1 - k) * .35, 1, 0, 1);
   }
   // underline scribble under أصعب (hand-drawn red pen)
   { const k = smooth(17.35, 17.85, t); if (k > 0) { g.save(); g.strokeStyle = CREAM; g.lineWidth = 7; g.lineCap = 'round';
       g.beginPath(); const x0 = 600, x1 = 250, n = 40; for (let i = 0; i <= n * k; i++) { const u = i / n;
-        const x = lerp(x0, x1, u), y = 828 + Math.sin(u * 9) * 4 + u * 6; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); g.restore(); } }
+        const x = lerp(x0, x1, u) - 1000 * spring(t - (T.exit + .14), 200, 24), y = 828 + Math.sin(u * 9) * 4 + u * 6; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); g.restore(); } }
 
   // qalam: glides in along its own axis, touches the missing dot, eases back a little
   if (t > T.qalam - .1 && calOrigin) {
@@ -394,7 +396,7 @@ function draw(t) {
     const uN = 1127 * k, vN = 449 * k, uT = 7 * k, vT = 77 * k;
     let ax = uN - uT, ay = vT - vN; const al = Math.hypot(ax, ay); ax /= al; ay /= al;
     const kin = spring(t - T.qalam, 150, 22), back = spring(t - (T.touch + .15), 170, 20);
-    const off = lerp(1500, 0, kin) + back * 330 - Math.exp(-Math.pow((t - T.touch) / .06, 2)) * 8;
+    const off = lerp(1500, 0, kin) + back * 330 + 1700 * spring(t - (T.exit - .05), 140, 22) - Math.exp(-Math.pow((t - T.touch) / .06, 2)) * 8;
     const b = boil(904, t, .6);
     g.save(); g.translate(tx + ax * off + b[0], ty + ay * off + b[1]); g.rotate(b[2]);
     g.save(); g.globalAlpha = .42; g.translate(18 + back * 26, 26 + back * 34); g.scale(-1, 1);
@@ -419,7 +421,15 @@ function draw(t) {
   }
 }
 
+const camDrift = (t) => [Math.sin(t * .37) * 6, Math.cos(t * .29) * 5];
+const SECTIONS = [{ id: 's01', from: 0, to: 21.8, draw: drawS01 }];
+function draw(t) { let s = SECTIONS[0]; for (const x of SECTIONS) if (t >= x.from) s = x; s.draw(t); }
 window.seek = (t) => { if (window.ready) draw(t); return true; };
-init().then(() => { if (!navigator.webdriver) { const t0 = performance.now();
-  (function loop() { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); })(); } });
-</script></body></html>
+window.addEventListener('load', () => init().then(() => { if (!navigator.webdriver) { const t0 = performance.now();
+  (function loop() { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); })(); } }));
+</script>
+<script src="assets/thuluth_border.js"></script>
+<script src="sections/core_ext.js"></script>
+<script src="sections/s02_laws.js"></script>
+<script src="sections/s03_origin.js"></script>
+</body></html>

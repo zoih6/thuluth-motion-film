@@ -4,3 +4,6 @@ tmp/
 *.log
 renders/*.wav
 renders/silent*.mp4
+renders/*.mp4
+segments/seg*.mp4
+tmp/
