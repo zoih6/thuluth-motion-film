@@ -4,7 +4,7 @@ Renders 6-second chunks in fresh browsers (retry on crash), concatenates by stre
 then muxes preview audio (VO + SFX, -14 LUFS) -> segments/NAME.mp4"""
 import sys, subprocess, os
 name, f0, f1 = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
-CH = 180; os.makedirs('tmp/chunks', exist_ok=True); parts = []
+CH = 180; os.makedirs('tmp/chunks', exist_ok=True); os.makedirs('segments', exist_ok=True); os.makedirs('renders', exist_ok=True); parts = []
 for a in range(f0, f1, CH):
     b = min(a + CH, f1); out = f'tmp/chunks/{name}_{a:05d}.mp4'; parts.append(out)
     if os.path.exists(out) and os.path.getsize(out) > 1000: continue
