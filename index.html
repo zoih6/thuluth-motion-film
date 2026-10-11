@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ar"><head><meta charset="utf-8">
+<title>loading</title>
+<style>
+@font-face{font-family:Amiri;src:url(fonts/Amiri-Bold.ttf)}
+@font-face{font-family:Ruqaa;src:url(fonts/ArefRuqaa-Bold.ttf)}
+@font-face{font-family:Reem;src:url("fonts/ReemKufi[wght].ttf");font-weight:400 700}
+@font-face{font-family:Kufi;src:url("fonts/NotoKufiArabic[wght].ttf");font-weight:100 900}
+@font-face{font-family:Messiri;src:url("fonts/ElMessiri[wght].ttf");font-weight:400 700}
+@font-face{font-family:Rakkas;src:url(fonts/Rakkas-Regular.ttf)}
+@font-face{font-family:Katibeh;src:url(fonts/Katibeh-Regular.ttf)}
+@font-face{font-family:Marhey;src:url("fonts/Marhey[wght].ttf");font-weight:300 700}
+@font-face{font-family:Tholoth;src:url(fonts/ae_Tholoth.ttf)}
+html,body{margin:0;background:#0d0c0b}
+canvas{display:block;width:100vw;max-width:1920px}
+</style></head>
+<body><canvas id="c" width="1920" height="1080"></canvas>
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  خط الثلث — Motion documentary · Sample 00:00–00:20
+//  Pure function of time: window.seek(t) paints frame t. No timers, no Math.random.
+// ════════════════════════════════════════════════════════════════════
+const W = 1920, H = 1080, DUR = 20.8;
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+
+// ── motion helpers (from motion-reel/scripts/motion.js) ──────────────
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const lerp = (a, b, k) => a + (b - a) * k;
+const smooth = (a, b, x) => { const k = clamp((x - a) / (b - a)); return k * k * (3 - 2 * k); };
+function spring(t, k = 170, d = 26) {
+  if (t <= 0) return 0;
+  const w0 = Math.sqrt(k), z = d / (2 * w0);
+  if (z < 1) { const wd = w0 * Math.sqrt(1 - z * z);
+    return 1 - Math.exp(-z * w0 * t) * (Math.cos(wd * t) + (z * w0 / wd) * Math.sin(wd * t)); }
+  return 1 - Math.exp(-w0 * t) * (1 + w0 * t);
+}
+const SNAPPY = [320, 30], DEFAULT = [170, 26], HEAVY = [90, 20], PLAYFUL = [220, 14];
+function track(t, keys, k = 170, d = 26) {
+  let v = keys[0][1];
+  for (let i = 1; i < keys.length; i++) v += (keys[i][1] - keys[i - 1][1]) * spring(t - keys[i][0], k, d);
+  return v;
+}
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+  let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const hash = (a, b = 0) => rng((a * 73856093) ^ (b * 19349663))();
+// stop-motion "boil": paper pieces breathe on 12 fps, seeded per piece
+function boil(id, t, amp = 1) {
+  const f = Math.floor(t * 12);
+  return [(hash(id, f) - .5) * 1.4 * amp, (hash(id + 999, f) - .5) * 1.4 * amp, (hash(id + 555, f) - .5) * 0.0035 * amp];
+}
+const shake = (t, t0, amp, f = 64) => t < t0 ? 0 : amp * Math.exp(-(t - t0) * 9) * Math.sin((t - t0) * f);
+
+// ── palette ──────────────────────────────────────────────────────────
+const INK = '#14110f', CREAM = '#efe5cf', RED = '#b3262b';
+
+// ── assets ───────────────────────────────────────────────────────────
+const A = {};
+const loadImg = (k, src) => new Promise(r => { const i = new Image(); i.onload = () => { A[k] = i; r(); }; i.src = src; });
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.ceil(w); c.height = Math.ceil(h); return c; };
+
+// torn-paper outline around a w×h rect (seeded)
+function tornPoly(w, h, seed, rough = 5, step = 13) {
+  const r = rng(seed), pts = [];
+  const edge = (x0, y0, x1, y1, nx, ny) => {
+    const len = Math.hypot(x1 - x0, y1 - y0), n = Math.max(2, Math.round(len / step));
+    const ph = r() * 6.28, fr = 1 + r() * 2;
+    for (let i = 0; i < n; i++) {
+      const k = i / n, wob = Math.sin(k * 6.28 * fr + ph) * rough * 0.9;
+      const o = (r() - .5) * rough * 1.6 + wob;
+      pts.push([x0 + (x1 - x0) * k + nx * o, y0 + (y1 - y0) * k + ny * o]);
+    }
+  };
+  edge(0, 0, w, 0, 0, -1); edge(w, 0, w, h, 1, 0); edge(w, h, 0, h, 0, 1); edge(0, h, 0, 0, -1, 0);
+  return pts;
+}
+const pathPoly = (c, pts, ox, oy) => { c.beginPath(); pts.forEach(([x, y], i) => i ? c.lineTo(x + ox, y + oy) : c.moveTo(x + ox, y + oy)); c.closePath(); };
+
+// a paper piece = texture clipped to torn outline + fibre edge + baked soft shadow
+function piece({ w, h, tex = 'cream', seed = 1, rough = 5, content = null, tint = null, fiber = .55, res = 1 }) {
+  const pad = 30, c = mk((w + pad * 2) * res, (h + pad * 2) * res), x = c.getContext('2d');
+  x.scale(res, res);
+  const pts = tornPoly(w, h, seed, rough);
+  const r = rng(seed + 7);
+  x.save(); pathPoly(x, pts, pad, pad); x.clip();
+  const T = A[{ cream: 'paper_cream', red: 'paper_red', gold: 'paper_gold', dark: 'bg_dark', kraft: 'paper_cream' }[tex]];
+  const sc = Math.max((w + 60) / T.width, (h + 60) / T.height) * (1 + r() * .6);
+  x.drawImage(T, pad - r() * (T.width * sc - w), pad - r() * (T.height * sc - h), T.width * sc, T.height * sc);
+  const tints = { cream: 'rgba(245,236,214,.6)', kraft: 'rgba(160,112,62,.55)', dark: 'rgba(22,20,18,.62)', red: 'rgba(120,10,16,.12)', gold: 'rgba(0,0,0,0)' };
+  x.fillStyle = tint || tints[tex]; x.fillRect(0, 0, c.width, c.height);
+  if (content) { x.save(); x.translate(pad, pad); content(x, w, h); x.restore(); }
+  x.restore();
+  // white fibre on torn edge
+  x.save(); x.lineJoin = 'round';
+  pathPoly(x, pts, pad, pad); x.strokeStyle = `rgba(250,244,230,${fiber})`; x.lineWidth = 2.2; x.stroke();
+  x.restore();
+  // shadow canvas
+  const s = mk(c.width, c.height), sx = s.getContext('2d'); sx.scale(res, res);
+  sx.filter = `blur(${7 * res}px)`; sx.fillStyle = 'rgba(0,0,0,1)'; pathPoly(sx, pts, pad, pad); sx.fill();
+  return { c, s, w, h, pad, res };
+}
+// draw a piece centred at (x,y)
+function drawPiece(p, x, y, rot = 0, sc = 1, lift = 0, alpha = 1, sxScale = 1) {
+  if (alpha <= 0.002 || sc <= 0.001) return;
+  g.save(); g.translate(x, y); g.rotate(rot); g.scale(sc * sxScale, sc);
+  g.scale(1 / p.res, 1 / p.res);
+  const ox = -p.c.width / 2, oy = -p.c.height / 2;
+  g.globalAlpha = alpha * (0.62 - lift * 0.12);
+  g.drawImage(p.s, ox + (5 + lift * 22) * p.res, oy + (8 + lift * 30) * p.res);
+  g.globalAlpha = alpha;
+  if (lift > 0) g.scale(1 + lift * .035, 1 + lift * .035);
+  g.drawImage(p.c, ox, oy);
+  g.restore();
+}
+// rhombic qalam dot (the nuqta) — the unit of measure in Thuluth
+function nuqta(c, x, y, s, color = INK, rot = 0) {
+  c.save(); c.translate(x, y); c.rotate(Math.PI / 4 + rot); c.fillStyle = color;
+  const a = s / 2, k = a * 0.12;
+  c.beginPath(); c.moveTo(-a, -a + k); c.quadraticCurveTo(-a, -a, -a + k, -a);
+  c.lineTo(a - k, -a); c.quadraticCurveTo(a, -a, a, -a + k);
+  c.lineTo(a, a - k); c.quadraticCurveTo(a, a, a - k, a);
+  c.lineTo(-a + k, a); c.quadraticCurveTo(-a, a, -a, a - k); c.closePath(); c.fill();
+  c.restore();
+}
+
+// ── scene data ───────────────────────────────────────────────────────
+const CELLW = 236, CELLH = 184, CW = 196, CH = 148;
+const FONTS = ['Amiri', 'Ruqaa', 'Reem', 'Kufi', 'Messiri', 'Rakkas', 'Katibeh', 'Marhey', 'Amiri Quran', 'Tholoth',
+  'Mashq', 'Sharjah', 'Granada', 'Furat', 'Hor', 'Electron', 'Metal', 'Shado', 'Nagham', 'Khalid', 'Rehan', 'Petra',
+  'Ostorah', 'Dimnah', 'Kayrawan', 'Jet', 'Hani', 'Cortoba', 'AlBattar', 'AlYarmook', 'AlManzomah', 'Salem', 'Tarablus',
+  'Graph', 'Nice', 'Arab', 'Sindbad', 'Nada', 'Rasheeq', 'Ouhod', 'Lemonada', 'Noto Nastaliq Urdu', 'Scheherazade'];
+const WORDS = ['خط', 'ع', 'حرف', 'ن', 'هـ', 'كتب', 'ب', 'قلم', 'حبر', 'م', 'ض', 'و', 'لا', 'ق', 'ي', 'ص', 'سطر', 'ك', 'ف', 'مداد', 'ح', 'ط', 'نون', 'كلمة'];
+const cards = [];
+let hero, sheet, strips = [], tapes = {}, bg, grain = [], vign, inkCan, inkCtx, inkData, orderData, inkAlpha, inkW, inkH;
+
+const CENTER = [960, 540];
+const heroIdx = { i: 0, j: 0 };
+// calligraphy placement on the big sheet (world coords, before group transform)
+const CAL = { w: 1080 };
+// hover candidates for the crown
+const HOVERS = [{ i: -2, j: -1, t: 9.25 }, { i: 2, j: 1, t: 9.95 }, { i: -1, j: 1, t: 10.65 }];
+
+async function init() {
+  await Promise.all([
+    loadImg('bg_dark', 'assets/bg_dark.jpg'), loadImg('paper_cream', 'assets/paper_cream.jpg'),
+    loadImg('paper_red', 'assets/paper_red.jpg'), loadImg('paper_gold', 'assets/paper_gold.jpg'),
+    loadImg('crown', 'assets/crown.png'), loadImg('qalam', 'assets/qalam.png'),
+    loadImg('ink', 'assets/thuluth_ink.png'), loadImg('ink3', 'assets/thuluth_ink3x.png'), loadImg('order', 'assets/thuluth_order.png'), loadImg('dot', 'assets/thuluth_dot.png')]);
+  for (const f of FONTS) { try { await document.fonts.load(`60px "${f}"`, 'خط حرف'); } catch (e) {} }
+  await document.fonts.load('800 60px Kufi', 'خط'); await document.fonts.load('900 60px Kufi', 'خط');
+  await document.fonts.ready;
+
+  // background: dark handmade paper, toned down
+  bg = mk(W + 200, H + 200); { const x = bg.getContext('2d');
+    x.drawImage(A.bg_dark, 0, 0, bg.width, bg.height);
+    x.fillStyle = 'rgba(14,12,11,.80)'; x.fillRect(0, 0, bg.width, bg.height); }
+  // grain frames + vignette
+  for (let k = 0; k < 4; k++) { const c = mk(640, 360), x = c.getContext('2d'), d = x.createImageData(640, 360), r = rng(900 + k);
+    for (let i = 0; i < d.data.length; i += 4) { const v = r() * 255; d.data[i] = d.data[i + 1] = d.data[i + 2] = v; d.data[i + 3] = 255; }
+    x.putImageData(d, 0, 0); grain.push(c); }
+  vign = mk(W, H); { const x = vign.getContext('2d'), gr = x.createRadialGradient(W / 2, H / 2, H * .35, W / 2, H / 2, H * 1.05);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.62)'); x.fillStyle = gr; x.fillRect(0, 0, W, H); }
+
+  // ink buffers for the writing reveal
+  inkW = A.ink.width; inkH = A.ink.height;
+  inkCan = mk(inkW, inkH); inkCtx = inkCan.getContext('2d');
+  const tmp = mk(inkW, inkH), tx = tmp.getContext('2d');
+  tx.drawImage(A.ink, 0, 0); inkAlpha = tx.getImageData(0, 0, inkW, inkH).data.slice();
+  tx.clearRect(0, 0, inkW, inkH); tx.drawImage(A.order, 0, 0); orderData = tx.getImageData(0, 0, inkW, inkH).data.slice();
+  inkData = inkCtx.createImageData(inkW, inkH);
+
+  // grid of cards — "hundreds of scripts"
+  const R = rng(4242);
+  const texes = ['cream', 'cream', 'cream', 'kraft', 'kraft', 'dark', 'dark', 'red', 'cream', 'gold'];
+  let id = 0;
+  for (let j = -5; j <= 5; j++) for (let i = -8; i <= 8; i++) {
+    const isHero = i === 0 && j === 0;
+    let tex = isHero ? 'cream' : texes[Math.floor(R() * texes.length)];
+    const font = FONTS[Math.floor(R() * FONTS.length)], word = WORDS[Math.floor(R() * WORDS.length)];
+    const col = (tex === 'dark' || tex === 'red') ? CREAM : INK;
+    const p = piece({ w: CW, h: CH, tex, seed: 100 + id, rough: 3.5, fiber: tex === 'dark' ? .5 : .35, res: isHero ? 10 : 1, tint: isHero ? 'rgba(246,238,218,.74)' : null,
+      content: isHero ? (x, w, h) => { const cw = w * .86, ch = cw * inkH / inkW; x.drawImage(A.ink3, (w - cw) / 2, (h - ch) / 2 + 4, cw, ch); }
+        : (x, w, h) => { x.fillStyle = col; x.direction = 'rtl'; x.textAlign = 'center'; x.textBaseline = 'middle';
+            let fs = word.length > 2 ? 64 : 84; x.font = `${fs}px "${font}"`;
+            const mw = x.measureText(word).width; if (mw > w * .82) { fs *= w * .82 / mw; x.font = `${fs}px "${font}"`; }
+            x.fillText(word, w / 2, h / 2 + 2); } });
+    const ring = Math.max(Math.abs(i) - 4, Math.abs(j) - 3, 0);
+    cards.push({ i, j, id, p, isHero,
+      x: CENTER[0] + i * CELLW + (isHero ? 0 : (R() - .5) * 46), y: CENTER[1] + j * CELLH + (isHero ? 0 : (R() - .5) * 38),
+      rot: isHero ? 0 : (R() - .5) * 0.22, sc0: isHero ? 1 : 0.84 + R() * 0.3, ring, popT: ring === 0 ? -1 : 2.65 + (ring - 1) * 0.72 + R() * 0.32,
+      dist: Math.hypot(i, j * 1.25), fallSpin: (R() - .5) * 2.4, fallDrift: (R() - .5) * 160 });
+    if (isHero) hero = cards[cards.length - 1];
+    id++;
+  }
+  // big ahar sheet that the hero card unfolds into
+  sheet = piece({ w: 1320, h: 760, tex: 'cream', seed: 77, rough: 9, tint: 'rgba(246,238,218,.7)' });
+  // label tapes
+  const tape = (txt, seed, w = 520, tex = 'cream', col = INK, fs = 54) => piece({ w, h: 96, tex, seed, rough: 3, fiber: .25,
+    tint: tex === 'cream' ? 'rgba(236,226,196,.55)' : null,
+    content: (x, w, h) => { x.fillStyle = col; x.direction = 'rtl'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `800 ${fs}px Kufi`; x.fillText(txt, w / 2, h / 2 + 4); } });
+  tapes.world = tape('عالمُ الحرفِ العربي', 11, 560);
+  tapes.hundreds = tape('مئاتُ الخطوط', 12, 470, 'dark', CREAM);
+  tapes.thuluth = tape('خطُّ الثلث', 13, 420, 'red', CREAM, 58);
+  // superlative strips
+  const strip = (txt, seed, tex, col, w, fs) => piece({ w, h: 150, tex, seed, rough: 6,
+    content: (x, w, h) => { x.fillStyle = col; x.direction = 'rtl'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.font = `900 ${fs}px Kufi`; x.fillText(txt, w / 2, h / 2 + 8); } });
+  strips = [
+    { p: strip('أعظم', 21, 'dark', CREAM, 440, 92), t: 15.62, y: 352, x: 420, rot: -0.035 },
+    { p: strip('أجمل', 22, 'cream', INK, 440, 92), t: 16.22, y: 540, x: 405, rot: 0.025 },
+    { p: strip('أصعب', 23, 'red', CREAM, 500, 104), t: 16.95, y: 740, x: 420, rot: -0.045, stamp: true },
+  ];
+  const sil = (img, blur) => { const c = mk(img.width + blur * 6, img.height + blur * 6), x = c.getContext('2d');
+    x.filter = `blur(${blur}px) brightness(0)`; x.drawImage(img, blur * 3, blur * 3); return c; };
+  A.crownSh = sil(A.crown, 12); A.qalamSh = sil(A.qalam, 10);
+  document.title = 'done';
+  window.ready = true;
+}
+
+// ── writing reveal (geodesic order map → ink flows through the letterforms) ──
+let lastP = -1;
+function inkFrame(p) {
+  if (p === lastP) return inkCan; lastP = p;
+  const d = inkData.data, lim = p * 262;
+  for (let i = 0; i < d.length; i += 4) {
+    const a = inkAlpha[i + 3]; if (!a) { d[i + 3] = 0; continue; }
+    const k = clamp((lim - orderData[i]) / 7);
+    d[i] = 20; d[i + 1] = 15; d[i + 2] = 12; d[i + 3] = a * k;
+  }
+  inkCtx.putImageData(inkData, 0, 0); return inkCan;
+}
+
+// ── timeline constants (from the voice-over word timings) ─────────────
+const T = { stamp: 0.08, pull: 0.42, tapeWorld: 1.25, tapeHundreds: 4.95, dim: 6.45, crownIn: 7.3,
+  push: 9.0, land: 11.58, cut: 11.8, fall: 12.12, flip: 12.96, write0: 13.2, write1: 14.85, crownTop: 14.9,
+  shift: 15.1, qalam: 18.35, touch: 18.95, dots: 19.45 };
+
+// crown position (world) as a function of time
+function crownPos(t) {
+  const hov = HOVERS.map(h => { const c = cards.find(c => c.i === h.i && c.j === h.j); return [c.x, c.y - 120]; });
+  const kx = [[0, 960], [T.push + .25, hov[0][0]], [T.push + .95, hov[1][0]], [T.push + 1.65, hov[2][0]], [11.12, 960]];
+  const ky = [[0, -900], [T.crownIn, 330], [T.push + .25, hov[0][1]], [T.push + .95, hov[1][1]], [T.push + 1.65, hov[2][1]], [11.12, 380], [T.land - .06, 446]];
+  let x = track(t, kx, 150, 22), y = track(t, ky.slice(0, 2), 140, 13);  // bouncy drop on the string
+  y += track(t, [[0, 0], ...ky.slice(2).map(([tt, v], i) => [tt, v - 330])], 150, 22);
+  return [x, y];
+}
+
+let CAM = null;
+function toScreen(x, y) { const dx = x - CAM.cx, dy = y - CAM.cy, c = Math.cos(CAM.crot), n = Math.sin(CAM.crot);
+  return [W / 2 + CAM.sh + (dx * c - dy * n) * CAM.s, H / 2 + CAM.sh * .6 + (dx * n + dy * c) * CAM.s]; }
+// ── draw ─────────────────────────────────────────────────────────────
+function draw(t) {
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  // camera
+  const logS = track(t, [[0, Math.log(19)], [T.pull, Math.log(1.18)]], 26, 10.4)
+    + track(t, [[0, 0], [2.5, Math.log(0.56 / 1.18)]], 14, 8)
+    + track(t, [[0, 0], [T.dim, Math.log(0.6 / 0.56)]], 20, 9)
+    + track(t, [[0, 0], [T.push, Math.log(1.0 / 0.6)]], 30, 11)
+    + track(t, [[0, 0], [11.0, Math.log(1.12)], [12.15, Math.log(1.9)], [T.flip + .12, 0]], 40, 13)
+    + Math.log(1 + .05 * smooth(T.shift, DUR, t));
+  let s = Math.exp(logS);
+  // focus point: hero's thuluth dot first, then grid centre
+  const dotWX = hero.x + (-CW / 2 + CW * .07 + (396 / inkW) * CW * .86), dotWY = hero.y + (-CH / 2 + (CH - CW * .86 * inkH / inkW) / 2 + 4 + (301 / inkH) * CW * .86 * inkH / inkW);
+  const fk = smooth(T.pull, 2.6, t);
+  let cx = lerp(dotWX, CENTER[0], fk), cy = lerp(dotWY, CENTER[1], fk);
+  let crot = track(t, [[0, -0.05], [T.pull, 0.0], [2.5, -0.018], [T.push, 0]], 20, 9);
+  // gentle drift
+  cx += Math.sin(t * .37) * 6; cy += Math.cos(t * .29) * 5;
+  const sh = shake(t, T.stamp, 14) + shake(t, T.land, 7) + shake(t, 16.95, 10) + shake(t, T.crownTop, 5);
+  CAM = { cx, cy, s, crot, sh };
+  // background (slight parallax)
+  g.drawImage(bg, -100 - (cx - 960) * .02, -100 - (cy - 540) * .02);
+
+  g.save();
+  g.translate(W / 2 + sh, H / 2 + sh * .6); g.scale(s, s); g.rotate(crot); g.translate(-cx, -cy);
+
+  // ── cards
+  const dimK = smooth(T.dim, T.dim + .7, t) * (1 - smooth(T.flip, T.flip + .8, t));
+  const visHalfW = W / 2 / s + 260, visHalfH = H / 2 / s + 260;
+  for (const c of cards) {
+    if (c.isHero) continue;
+    let x = c.x, y = c.y, rot = c.rot, sc = c.sc0, lift = 0;
+    if (c.popT > 0) { const k = spring(t - c.popT, 260, 17); if (k <= 0.001) continue; sc *= k; rot += (1 - k) * 0.4; }
+    // 'hundreds of scripts' ripple: a diagonal wave lifts the wall card by card
+    { const ph = 3.25 + (c.i * .11 + c.j * .16 + 1.6) * .55; const wv = Math.exp(-Math.pow((t - ph) / .16, 2)); lift = wv * .9; rot += wv * .05; }
+    // crown considered this card
+    HOVERS.forEach(h => { if (h.i === c.i && h.j === c.j) lift = Math.exp(-Math.pow((t - h.t - .25) / .28, 2)) * 1.0; });
+    // fall away
+    const ft = t - (T.fall + c.dist * 0.035);
+    if (ft > 0) { y += 2900 * ft * ft + (-120 * ft); x += c.fallDrift * ft; rot += c.fallSpin * ft; lift = Math.max(lift, clamp(ft * 6)); }
+    if (Math.abs(x - cx) > visHalfW || Math.abs(y - cy) > visHalfH) continue;
+    const b = boil(c.id, t, .8);
+    drawPiece(c.p, x + b[0], y + b[1], rot + b[2], sc, lift);
+  }
+  // dimming veil over the crowd (hero stays bright)
+  if (dimK > 0) { g.save(); g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = `rgba(8,7,6,${.58 * dimK})`; g.fillRect(0, 0, W, H); g.restore(); }
+
+  // ── hero card → flips → big sheet
+  const flipK = smooth(T.flip, T.flip + .42, t);
+  const grpShift = spring(t - T.shift, 110, 21);
+  const GX = 960 + 300 * grpShift, GY = 548, GS = 1 - .2 * grpShift;
+  if (flipK < .5) {
+    const b = boil(hero.id, t, .6);
+    const lift = Math.exp(-Math.pow((t - T.land + .3) / .25, 2)) * .3;
+    drawPiece(hero.p, hero.x + b[0], hero.y + b[1], hero.rot, 1, lift, 1, Math.cos(flipK * Math.PI));
+  }
+  let calOrigin = null;
+  if (flipK >= .5) {
+    const grow = spring(t - (T.flip + .21), 120, 20);
+    const sc0 = CW / 1320;
+    const ss = lerp(sc0, 1, grow) * GS;
+    const b = boil(500, t, .5);
+    const sx = Math.min(1, (flipK - .5) * 2.0 + .02);
+    const x = lerp(hero.x, GX, grow), y = lerp(hero.y, GY, grow);
+    drawPiece(sheet, x + b[0], y + b[1], -0.01 * (1 - grow) + b[2], ss, 0, 1, Math.sin(sx * Math.PI / 2));
+    // calligraphy on the sheet
+    const cw = CAL.w * ss, ch = cw * inkH / inkW;
+    calOrigin = { x: x - cw / 2, y: y - ch / 2 + 14 * ss, k: cw / inkW };
+    const p = clamp((t - T.write0) / (T.write1 - T.write0));
+    if (p > 0) g.drawImage(inkFrame(p), calOrigin.x, calOrigin.y, cw, ch);
+    // final dot placed by the qalam
+    const dk = spring(t - T.touch, 380, 18);
+    if (dk > 0) { const dw = cw, dh = ch, ex = calOrigin.x + 396 * calOrigin.k, ey = calOrigin.y + 301 * calOrigin.k;
+      g.save(); g.translate(ex, ey); g.scale(lerp(1.6, 1, dk), lerp(1.6, 1, dk)); g.globalAlpha = clamp(dk * 3);
+      g.drawImage(A.dot, -ex + calOrigin.x, -ey + calOrigin.y, dw, dh); g.restore(); }
+    // measuring dots beside the alif (the rule-system teaser)
+    for (let k = 0; k < 6; k++) {
+      const st = spring(t - (T.dots + k * .14), 320, 16); if (st <= 0) continue;
+      const ax = calOrigin.x + 1268 * calOrigin.k, ay = calOrigin.y + (500 - k * 66) * calOrigin.k;
+      nuqta(g, ax, ay, 46 * calOrigin.k * st, RED, k % 2 ? 0.04 : -0.04);
+    }
+  }
+
+  // ── crown
+  if (t > T.crownIn - .2) {
+    let [x, y] = crownPos(t);
+    let cwid = 420, crot = 0;
+    // pendulum swing from horizontal velocity
+    const [x2] = crownPos(t - 1 / 60); const vx = (x - x2) * 60;
+    crot = clamp(-vx * 0.00022, -.25, .25) + Math.sin(t * 3.1) * .03 * Math.exp(-Math.max(0, t - T.crownIn) * .4) * (t < T.land ? 1 : 0);
+    // after landing: lifted away during flip, re-crowns the calligraphy
+    if (t > T.flip - .05) {
+      const up = spring(t - (T.flip - .05), 160, 22), down = spring(t - (T.crownTop - .35), 200, 17);
+      const tx = calOrigin ? calOrigin.x + 1110 * calOrigin.k : GX + 380, ty = calOrigin ? calOrigin.y - 6 * calOrigin.k : 200;
+      x = lerp(x, tx, down); y = lerp(lerp(y, y - 900, up), ty, down); cwid = lerp(420, 360 * GS, down);
+      crot = lerp(crot, -0.07, down);
+    }
+    // string from above
+    if (t < T.cut + .6) {
+      const cutK = spring(t - T.cut, 200, 24);
+      const topY = y - cwid * A.crown.height / A.crown.width - 2600;
+      const endY = lerp(y - cwid * A.crown.height / A.crown.width + 18, topY, cutK);
+      g.strokeStyle = 'rgba(232,222,198,.75)'; g.lineWidth = 2.2 / Math.max(s, .4);
+      g.beginPath(); g.moveTo(x, endY); g.lineTo(x + (x - crownPos(t - .12)[0]) * .3, topY); g.stroke();
+    }
+    const ch = cwid * A.crown.height / A.crown.width, kk = cwid / A.crown.width;
+    g.save(); g.translate(x, y); g.rotate(crot);
+    g.globalAlpha = .55; g.drawImage(A.crownSh, -cwid / 2 - 36 * kk + 9, -ch - 36 * kk + 14, A.crownSh.width * kk, A.crownSh.height * kk);
+    g.globalAlpha = 1; g.drawImage(A.crown, -cwid / 2, -ch, cwid, ch); g.restore();
+  }
+  g.restore();
+
+  // ── screen-space layer: tapes, strips, qalam
+  // tape 1: عالم الحرف العربي
+  {
+    const kin = spring(t - T.tapeWorld, ...SNAPPY), kout = spring(t - (T.tapeHundreds - .15), 260, 26);
+    if (kin > 0 && kout < 1) { const b = boil(901, t);
+      drawPiece(tapes.world, 960 + b[0] - 1700 * kout, 860 + b[1], -0.035 + (1 - kin) * .25, lerp(1.35, 1, kin), 0, 1); }
+    const k2 = spring(t - T.tapeHundreds, ...SNAPPY), k2o = spring(t - T.dim, 200, 26);
+    if (k2 > 0 && k2o < 1) { const b = boil(902, t);
+      drawPiece(tapes.hundreds, 960 + b[0] + 1700 * k2o, 860 + b[1] + (1 - k2) * 120, 0.03 - (1 - k2) * .2, 1, 0, 1); }
+  }
+  // tape: خط الثلث, pinned under the word once written
+  {
+    const k = spring(t - 14.35, ...SNAPPY), ko = spring(t - (T.shift - .05), 200, 24);
+    if (k > 0 && ko < 1) { const b = boil(903, t);
+      drawPiece(tapes.thuluth, 640 + b[0] - 1200 * ko, 900 + b[1], -0.05 + (1 - k) * .3, lerp(1.4, 1, k), 0, 1); }
+  }
+  // superlative strips
+  for (const st of strips) {
+    const k = st.stamp ? spring(t - st.t, 300, 22) : spring(t - st.t, 240, 20);
+    if (k <= 0) continue; const b = boil(st.t * 100, t);
+    if (st.stamp) drawPiece(st.p, st.x + b[0], st.y + b[1], st.rot + (1 - k) * .1, lerp(1.7, 1, k), (1 - k) * 1.2, clamp(k * 4));
+    else drawPiece(st.p, st.x - (1 - k) * 760 + b[0], st.y + b[1], st.rot - (1 - k) * .35, 1, 0, 1);
+  }
+  // underline scribble under أصعب (hand-drawn red pen)
+  { const k = smooth(17.35, 17.85, t); if (k > 0) { g.save(); g.strokeStyle = CREAM; g.lineWidth = 7; g.lineCap = 'round';
+      g.beginPath(); const x0 = 600, x1 = 250, n = 40; for (let i = 0; i <= n * k; i++) { const u = i / n;
+        const x = lerp(x0, x1, u), y = 828 + Math.sin(u * 9) * 4 + u * 6; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); g.restore(); } }
+
+  // qalam: glides in along its own axis, touches the missing dot, eases back a little
+  if (t > T.qalam - .1 && calOrigin) {
+    const [tx, ty] = toScreen(calOrigin.x + 396 * calOrigin.k, calOrigin.y + 301 * calOrigin.k);
+    const qw = 1080, k = qw / A.qalam.width, qh = A.qalam.height * k;
+    const uN = 1127 * k, vN = 449 * k, uT = 7 * k, vT = 77 * k;
+    let ax = uN - uT, ay = vT - vN; const al = Math.hypot(ax, ay); ax /= al; ay /= al;
+    const kin = spring(t - T.qalam, 150, 22), back = spring(t - (T.touch + .15), 170, 20);
+    const off = lerp(1500, 0, kin) + back * 330 - Math.exp(-Math.pow((t - T.touch) / .06, 2)) * 8;
+    const b = boil(904, t, .6);
+    g.save(); g.translate(tx + ax * off + b[0], ty + ay * off + b[1]); g.rotate(b[2]);
+    g.save(); g.globalAlpha = .42; g.translate(18 + back * 26, 26 + back * 34); g.scale(-1, 1);
+    g.drawImage(A.qalamSh, -uN - 30 * k, -vN - 30 * k, A.qalamSh.width * k, A.qalamSh.height * k); g.restore();
+    g.scale(-1, 1); g.drawImage(A.qalam, -uN, -vN, qw, qh);
+    g.restore();
+  }
+
+  // grain + vignette
+  g.save(); g.globalCompositeOperation = 'overlay'; g.globalAlpha = .10; g.drawImage(grain[Math.floor(t * 12) % 4], 0, 0, W, H); g.restore();
+  g.drawImage(vign, 0, 0);
+  // the opening stamp: crisp vector nuqta while the camera is deep in macro
+  {
+    const k = spring(t - T.stamp, 420, 24);
+    const vis = 1 - smooth(1.0, 1.6, t);
+    if (k > 0 && vis > 0 && t < 1.7) {
+      // project the hero dot into screen space
+      const [px, py] = toScreen(dotWX, dotWY);
+      const size = 7.6 * s * lerp(1.9, 1, k);
+      g.save(); g.globalAlpha = vis; nuqta(g, px, py, size, INK, crot + .03); g.restore();
+    }
+  }
+}
+
+window.seek = (t) => { if (window.ready) draw(t); return true; };
+init().then(() => { if (!navigator.webdriver) { const t0 = performance.now();
+  (function loop() { draw(((performance.now() - t0) / 1000) % DUR); requestAnimationFrame(loop); })(); } });
+</script></body></html>
