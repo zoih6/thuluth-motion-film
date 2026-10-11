@@ -47,3 +47,5 @@ node sfx2.mjs cues_v3.json tmp/sfx_full.wav 236.1
 | v3p4 | 4544–5668 | 2:31.5–3:08.9 | v3p4.mp4 |
 | v3p5 | 5668–7080 | 3:08.9–3:56.0 | v3p5.mp4 |
 Final: concat the video streams of the 5 parts → `dl/master_silent.mp4`, then rebuild the audio with cues_v3 and run `final_assemble.sh` (it reads tmp/sfx_full.wav).
+
+## ✅ DONE — release `v3.0`: final_1080p.mp4 (100MB), final_720p.mp4 (47MB), poster.jpg, contact.jpg — 236.0 s, -14.3 LUFS, 7080 frames
