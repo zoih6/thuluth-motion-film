@@ -30,3 +30,20 @@ After rendering: upload `segments/segNN.mp4` to release `segments` (id 409680796
 
 Final: concat all segments video by stream copy + one global audio mix (VO + full cues.json) → release `v1.0` `final.mp4`.
 `sample_v1_0000-0020.mp4` (the first approved sample) is also in the `segments` release.
+
+---
+## v3 — Sepia Manuscript Cinema (branch `v3`, release `v3.0`)
+Page: `v3.html` (engine `v3/core3.js`, scenes `v3/sc12.js sc34.js sc57.js sc89.js`), style rules `docs/STYLE_v3.md`, SFX cues `cues_v3.json`.
+```bash
+PAGE=v3.html ./cs.sh NAME 4 t1 t2 ...          # contact sheet of stills
+PAGE=v3.html python3 render_seg.py NAME F0 F1  # chunked render + preview mux
+node sfx2.mjs cues_v3.json tmp/sfx_full.wav 236.1
+```
+| part | frames | time | release `segments` |
+|---|---|---|---|
+| v3p1 | 0–2020 | 0:00–1:07.3 | sample_v3.mp4 |
+| v3p2 | 2020–3104 | 1:07.3–1:43.5 | v3p2.mp4 |
+| v3p3 | 3104–4544 | 1:43.5–2:31.5 | v3p3.mp4 |
+| v3p4 | 4544–5668 | 2:31.5–3:08.9 | v3p4.mp4 |
+| v3p5 | 5668–7080 | 3:08.9–3:56.0 | v3p5.mp4 |
+Final: concat the video streams of the 5 parts → `dl/master_silent.mp4`, then rebuild the audio with cues_v3 and run `final_assemble.sh` (it reads tmp/sfx_full.wav).
