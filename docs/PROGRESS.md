@@ -30,3 +30,10 @@ After rendering: upload `segments/segNN.mp4` to release `segments` (id 409680796
 
 Final: concat all segments video by stream copy + one global audio mix (VO + full cues.json) → release `v1.0` `final.mp4`.
 `sample_v1_0000-0020.mp4` (the first approved sample) is also in the `segments` release.
+
+## v3.1 — closing credits (2026-10-12)
+- Scene 46 `v3/sc10_credits.js` (film 236.2–250.5), plate `assets/v3/plate_archive.jpg`.
+- `assets/vo.mp3` is now the 12.3 s credits VO (placed at 237.0). Phrase onsets: 0.17 بحث الطالبات · 2.04 رهف · 3.26 رغد · 4.46 سالي · 5.74 سمية · 7.06 شذى · 8.72 مونتاج · 10.15 شذى ياسر.
+- Build: `PAGE=v3.html node render.mjs --from 236 --to 250.5 --sub 2 --out out/credits_silent.mp4`;
+  SFX `node sfx2.mjs cues_credits.json tmp/sfx_credits.wav 14.5`; mix VO(+1.0 s) + SFX (sidechain) → loudnorm −14 LUFS;
+  final = v3.0 final_1080p.mp4 + credits clip (pc→tv range), concat re-encode → release `v3.1`.
